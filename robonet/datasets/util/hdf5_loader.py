@@ -27,7 +27,7 @@ def default_loader_hparams():
             'target_sdim': 5,
             'state_mismatch': STATE_MISMATCH.ERROR,     # TODO make better flag parsing
             'action_mismatch': ACTION_MISMATCH.ERROR,   # TODO make better flag parsing
-            'img_size': [48, 64],
+            'img_size': [64, 64],
             'cams_to_load': [0],
             'impute_autograsp_action': True,
             'load_annotations': False,
@@ -35,10 +35,16 @@ def default_loader_hparams():
             'load_T': 0                               # TODO implement error checking here for jagged reading
             }
 
+def crop_center(img,cropx,cropy):
+    y,x = img.shape[:2]
+    startx = x//2-(cropx//2)
+    starty = y//2-(cropy//2)    
+    return img[starty:starty+cropy,startx:startx+cropx]
 
 def load_camera_imgs(cam_index, file_pointer, file_metadata, target_dims, start_time=0, n_load=None):
     cam_group = file_pointer['env']['cam{}_video'.format(cam_index)]
     old_dims = file_metadata['frame_dim']
+    assert all(np.equal(old_dims, np.array([240,320])))
     length = file_metadata['img_T']
     encoding = file_metadata['img_encoding']
     image_format = file_metadata['image_format']
@@ -66,6 +72,8 @@ def load_camera_imgs(cam_index, file_pointer, file_metadata, target_dims, start_
         if (old_height, old_width) == (target_height, target_width):
             images[t] = img
         else:
+            if target_height == target_width:
+                img = crop_center(img, 240,240)
             images[t] = cv2.resize(img, (target_width, target_height), interpolation=resize_method)
     
     if image_format == 'RGB':
@@ -150,7 +158,7 @@ def load_data(f_name, file_metadata, hparams, rng=None):
         buf = f.read()
     assert hashlib.sha256(buf).hexdigest() == file_metadata['sha256'], "file hash doesn't match meta-data. maybe delete pkl and re-generate?"
     
-    with h5py.File(io.BytesIO(buf)) as hf:
+    with h5py.File(io.BytesIO(buf), 'r') as hf:
         start_time, n_states = 0, min([file_metadata['state_T'], file_metadata['img_T'], file_metadata['action_T'] + 1])
         assert n_states > 1, "must be more than one state in loaded tensor!"
         if 1 < hparams.load_T < n_states:

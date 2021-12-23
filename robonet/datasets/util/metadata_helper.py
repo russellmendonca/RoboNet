@@ -131,6 +131,7 @@ def load_metadata_dict(fname):
         return meta_data_dict
 
 def get_metadata_frame(files):
+    #import ipdb ; ipdb.set_trace()
     if isinstance(files, str):
         base_path = files
         files = sorted(glob.glob('{}/*.hdf5'.format(files)))

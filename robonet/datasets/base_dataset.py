@@ -1,6 +1,7 @@
 import os
 import tensorflow as tf
-from tensorflow.contrib.training import HParams
+#from tensorflow.contrib.training import HParams
+from hparams import HParams
 import glob
 import copy
 from .util.metadata_helper import load_metadata, MetaDataContainer
@@ -12,7 +13,6 @@ class BaseVideoDataset(object):
     def __init__(self, batch_size, dataset_files_or_metadata, hparams=dict()):
         assert isinstance(batch_size, int), "batch_size must be an integer"
         self._batch_size = batch_size
-
         if isinstance(dataset_files_or_metadata, str):
             self._metadata = [load_metadata(dataset_files_or_metadata)]
         elif isinstance(dataset_files_or_metadata, MetaDataContainer):
@@ -26,11 +26,15 @@ class BaseVideoDataset(object):
                 else:
                     self._metadata.append(d)
 
-        # initialize hparams and store metadata_frame
-        self._hparams = self._get_default_hparams().override_from_dict(hparams)
+        # initialize hparams, and update with user specified ones
+        self._hparams = self._get_default_hparams()
+        for key in self._hparams.keys():
+            setattr(self._hparams, key, self._hparams[key])
+        for key in hparams:
+            assert key in self._hparams
+            setattr(self._hparams, key, hparams[key])
 
         self._init_rng()
-
         #initialize dataset
         self._num_ex_per_epoch = self._init_dataset()
         print('loaded {} train files'.format(self._num_ex_per_epoch))
@@ -59,7 +63,7 @@ class BaseVideoDataset(object):
     def _get_default_hparams():
         default_dict = {
             'RNG': 11381294392481135266,
-            'use_random_train_seed': False
+            'use_random_train_seed': False,
         }
         return HParams(**default_dict)
     

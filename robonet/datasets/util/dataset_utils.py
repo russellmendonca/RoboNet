@@ -45,5 +45,4 @@ def split_train_val_test(metadata, splits=None, train_ex=None, rng=None):
         val_files = files[splits[0]: splits[1]]
     if splits[2]:
         test_files = files[splits[1]: splits[2]]
-    
     return train_files, val_files, test_files
