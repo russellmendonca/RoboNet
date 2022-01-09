@@ -23,11 +23,12 @@ class STATE_MISMATCH:
 
 def default_loader_hparams():
     return {
-            'target_adim': 4,
+            'target_adim': 5,
             'target_sdim': 5,
-            'state_mismatch': STATE_MISMATCH.ERROR,     # TODO make better flag parsing
-            'action_mismatch': ACTION_MISMATCH.ERROR,   # TODO make better flag parsing
-            'img_size': [64, 64],
+            'state_mismatch': STATE_MISMATCH.PAD_ZERO,     # TODO make better flag parsing
+            'action_mismatch': ACTION_MISMATCH.PAD_ZERO,   # TODO make better flag parsing
+            'img_size': [74, 74],
+            #'img_size': [78, 104],
             'cams_to_load': [0],
             'impute_autograsp_action': True,
             'load_annotations': False,
@@ -44,7 +45,7 @@ def crop_center(img,cropx,cropy):
 def load_camera_imgs(cam_index, file_pointer, file_metadata, target_dims, start_time=0, n_load=None):
     cam_group = file_pointer['env']['cam{}_video'.format(cam_index)]
     old_dims = file_metadata['frame_dim']
-    assert all(np.equal(old_dims, np.array([240,320])))
+    #assert all(np.equal(old_dims, np.array([240,320])))
     length = file_metadata['img_T']
     encoding = file_metadata['img_encoding']
     image_format = file_metadata['image_format']
@@ -72,8 +73,8 @@ def load_camera_imgs(cam_index, file_pointer, file_metadata, target_dims, start_
         if (old_height, old_width) == (target_height, target_width):
             images[t] = img
         else:
-            if target_height == target_width:
-                img = crop_center(img, 240,240)
+            #if target_height == target_width:
+            #    img = crop_center(img, 240,240)
             images[t] = cv2.resize(img, (target_width, target_height), interpolation=resize_method)
     
     if image_format == 'RGB':

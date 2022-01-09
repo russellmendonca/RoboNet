@@ -3,6 +3,7 @@ from robonet.datasets.util.hdf5_loader import load_data, default_loader_hparams
 #from tensorflow.contrib.training import HParams
 from hparams import HParams
 from robonet.datasets.util.dataset_utils import color_augment, split_train_val_test
+from robonet.datasets.util.randaug import rand_aug, rand_crop
 import numpy as np
 import tensorflow as tf
 import copy
@@ -79,19 +80,18 @@ class RoboNetDataset(BaseVideoDataset):
             if m:
                 rng = self._random_generator[name]
                 mode_source_files, mode_source_metadata = [[t[j] for t in m] for j in range(2)]
-            
+                
                 gen_func = self._wrap_generator(mode_source_files, mode_source_metadata, rng, name)
                
                 dataset = tf.data.Dataset.from_generator(gen_func, output_format)
                 dataset = dataset.map(self._get_dict)
+                #self.mode_generators[name] = dataset
                 self.mode_generators[name] = dataset.prefetch(self._hparams.buffer_size)
                 self.mode_num_files[name] = sum([len(f) for f in mode_source_files])
 
-                #import ipdb ; ipdb.set_trace()
                 # dataset = dataset.map(self._get_dict)
                 # dataset = dataset.prefetch(self._hparams.buffer_size)
                 # self.mode_generators[name] = tf.compat.v1.data.make_one_shot_iterator(dataset)
-        
         return self.mode_num_files['train']
 
     def _split_files(self, source_number, metadata):
@@ -122,14 +122,14 @@ class RoboNetDataset(BaseVideoDataset):
             'ret_fnames': False,                     # return file names of loaded hdf5 record
             'buffer_size': 100,                      # examples to prefetch
             'all_modes_max_workers': True,           # use multi-threaded workers regardless of the mode
-            'load_random_cam': False,                 # load a random camera for each example
+            'load_random_cam': True,                 # load a random camera for each example
             'same_cam_across_sub_batch': False,      # same camera across sub_batches
             'pool_workers': 0,                       # number of workers for pool (if 0 uses batch_size workers)
             'color_augmentation':0.0,                # std of color augmentation (set to 0 for no augmentations)
             'train_ex_per_source': [-1],             # list of train_examples per source (set to [-1] to rely on splits only)
             'pool_timeout': 10,                      # max time to wait to get batch from pool object
             'MAX_RESETS': 10,                         # maximum number of pool resets before error is raised in main thread
-            'source_probs': None
+            'source_probs': None,
         }
         for k, v in default_loader_hparams().items():
             default_dict[k] = v
@@ -227,6 +227,21 @@ class RoboNetDataset(BaseVideoDataset):
                 ret_vals = ret_vals + [file_names]
 
             yield tuple(ret_vals)
+    
+
+    def rand_augment(self, batch_data):
+          
+        scan_vid_fn = lambda a, x: rand_aug(tf.random.uniform(shape=(4,2), minval=0, maxval=100, dtype=tf.int32), x, 
+                                            num_layers = 3, magnitude = 10)
+        
+        aug_vids = tf.scan(scan_vid_fn, batch_data)
+        bs = aug_vids.shape[0]
+        aug_vids = tf.reshape(aug_vids, (-1,)+tuple(aug_vids.shape[-3:]))
+        rc_vids = rand_crop(tf.random.uniform(shape=(4,2), minval=0, maxval=100, dtype=tf.int32), aug_vids, 
+                                width=74, height=74, wiggle=10)
+
+        #return tf.reshape(rc_vids, (bs, bl)+tuple(rc_vids.shape[-3:]))
+        return tf.reshape(rc_vids, (bs, self.batch_length, 64,64,3))
 
     def _get_dict(self, *args):
         assert self.batch_length < self._hparams.load_T
@@ -249,15 +264,18 @@ class RoboNetDataset(BaseVideoDataset):
             ncam = len(self._hparams.cams_to_load)
         
         out_dict['image'] = tf.reshape(images, [self.batch_size, self._hparams.load_T, height, width, 3])
-
+       
         #out_dict['images'] = tf.cast(shaped_images, tf.float32) / 255.0
         if self._hparams.color_augmentation:
             out_dict['image'] = color_augment(out_dict['image'], self._hparams.color_augmentation)
 
         out_dict['action'] = tf.reshape(actions, [self.batch_size, self._hparams.load_T - 1, self._hparams.target_adim])
         #out_dict['states'] = tf.reshape(states, [self.batch_size, self._hparams.load_T, self._hparams.target_sdim])
-        start_idx = np.random.randint(0, self._hparams.load_T - self.batch_length)
+        #start_idx = np.random.randint(0, self._hparams.load_T - self.batch_length)
+        start_idx = tf.random.uniform(shape=(), minval=0, maxval= self._hparams.load_T - self.batch_length, dtype=tf.int32)
+        #print(start_idx)
         out_dict['image'] = out_dict['image'][:, start_idx : start_idx + self.batch_length, :, :,:]
+        out_dict['image'] = self.rand_augment(out_dict['image'])
         out_dict['action'] = out_dict['action'][:, start_idx : start_idx + self.batch_length, :]
       
         if self._hparams.load_annotations:
@@ -265,4 +283,5 @@ class RoboNetDataset(BaseVideoDataset):
         if self._hparams.ret_fnames:
             out_dict['f_names'] = f_names
         
+
         return out_dict
